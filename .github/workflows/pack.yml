@@ -1,0 +1,35 @@
+# Packs a CEF version and publishes it as a release:
+# Actions → pack → Run workflow, with the version (e.g. 154.0.34).
+name: pack
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "CEF version, short (154.0.34) or full"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pack
+        run: python3 -I pack.py "${{ inputs.version }}" --out out
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("out/pin.json"))["version"])')
+          cef=$(python3 -c 'import json; print(json.load(open("out/pin.json"))["cef"])')
+          if gh release view "$version" > /dev/null 2>&1; then
+            echo "release $version exists already: archives are never replaced" >&2
+            exit 1
+          fi
+          gh release create "$version" out/cef-*.tar.xz out/pin.json \
+            --title "CEF $version" \
+            --notes "CEF $cef: Chromium Embedded Framework.framework and its licenses, repacked by pack.py. pin.json: each archive's URL, size and SHA-256."
